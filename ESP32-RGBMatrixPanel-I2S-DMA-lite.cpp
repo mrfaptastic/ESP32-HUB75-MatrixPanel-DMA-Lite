@@ -70,7 +70,7 @@ bool RGB64x32MatrixPanel_I2S_DMA::allocateDMAmemory(int r1_pin, int  g1_pin, int
     fb_desc[2].size =_frame_buffer_memory_required;    
 
     i2s_parallel_config_t cfg={
-        .gpio_bus={r1_pin, g1_pin, b1_pin, r2_pin, g2_pin, b2_pin, -1,-1, a_pin, b_pin, c_pin, d_pin, e_pin, lat_pin, oe_pin, -1},
+        .gpio_bus={r1_pin, g1_pin, b1_pin, r2_pin, g2_pin, b2_pin, -1,-1, -1, a_pin, b_pin, c_pin, d_pin, e_pin, lat_pin, oe_pin},
         .gpio_clk=clk_pin,
         .clkspeed_hz=ESP32_I2S_CLOCK_SPEED, //ESP32_I2S_CLOCK_SPEED,  // formula used is 80000000L/(cfg->clkspeed_hz + 1), must result in >=2.  Acceptable values 26.67MHz, 20MHz, 16MHz, 13.34MHz...
         .bits=ESP32_I2S_DMA_MODE, //ESP32_I2S_DMA_MODE,
@@ -93,13 +93,29 @@ bool RGB64x32MatrixPanel_I2S_DMA::allocateDMAmemory(int r1_pin, int  g1_pin, int
 
 } // end initMatrixDMABuffer()
 
-
 /* Update a specific co-ordinate in the DMA buffer */
 void RGB64x32MatrixPanel_I2S_DMA::updateMatrixDMABuffer(int16_t x_coord, int16_t y_coord, uint8_t red, uint8_t green, uint8_t blue)
 {
-    if ( !everything_OK ) return;
+    if ( !everything_OK ) { 
+      
 
-    /* 1) Check that the co-ordinates are within range, or it'll break everything big time. */
+      #if SERIAL_DEBUG 
+              Serial.println("Cannot updateMatrixDMABuffer as setup failed!");
+      #endif         
+      
+      return;
+    }
+
+  
+  #ifdef SPLIT_MEMORY_MODE
+  #ifdef SERIAL_DEBUG 
+    int tmp_y_coord = y_coord;
+  #endif
+  #endif
+    
+   /* 1) Check that the co-ordinates are within range, or it'll break everything big time.
+    * Valid co-ordinates are from 0 to (MATRIX_XXXX-1)
+    */
 	  if ( x_coord < 0 || y_coord < 0 || x_coord >= MATRIX_WIDTH || y_coord >= MATRIX_HEIGHT) {
       return;
     }
@@ -119,7 +135,10 @@ void RGB64x32MatrixPanel_I2S_DMA::updateMatrixDMABuffer(int16_t x_coord, int16_t
     {
         uint16_t mask = (1 << color_depth_idx); // 24 bit color
         
+        // The destination for the pixel bitstream 
         rowBitStruct *p;
+
+        //Serial.printf("Drawing to buffer %d", back_buffer_id);
 
         if (back_buffer_id == 0) {
           p = &matrix_framebuffer_malloc_1->rowdata[y_coord].rowbits[color_depth_idx];
@@ -128,7 +147,41 @@ void RGB64x32MatrixPanel_I2S_DMA::updateMatrixDMABuffer(int16_t x_coord, int16_t
         }
      
         int v=0; // the output bitstream
-              
+        
+        // if there is no latch to hold address, output ADDX lines directly to GPIO and latch data at end of cycle
+        int gpioRowAddress = y_coord;
+        
+        // normally output current rows ADDX, special case for LSB, output previous row's ADDX (as previous row is being displayed for one latch cycle)
+        if(color_depth_idx == 0)
+          gpioRowAddress = y_coord-1;
+        
+        if (gpioRowAddress & 0x01) v|=BIT_A; // 1
+        if (gpioRowAddress & 0x02) v|=BIT_B; // 2
+        if (gpioRowAddress & 0x04) v|=BIT_C; // 4
+        if (gpioRowAddress & 0x08) v|=BIT_D; // 8
+        if (gpioRowAddress & 0x10) v|=BIT_E; // 16
+		
+        // need to disable OE after latch to hide row transition
+        if((x_coord) == 0 ) v|=BIT_OE;
+        
+        // drive latch while shifting out last bit of RGB data
+        if((x_coord) == PIXELS_PER_ROW-1) v|=BIT_LAT;
+		
+        // need to turn off OE one clock before latch, otherwise can get ghosting
+        if((x_coord)==PIXELS_PER_ROW-2) v|=BIT_OE;		
+
+        // turn off OE after brightness value is reached when displaying MSBs
+        // MSBs always output normal brightness
+        // LSB (!color_depth_idx) outputs normal brightness as MSB from previous row is being displayed
+        if((color_depth_idx > lsbMsbTransitionBit || !color_depth_idx) && ((x_coord) >= brightness)) v|=BIT_OE; // For Brightness
+        
+        // special case for the bits *after* LSB through (lsbMsbTransitionBit) - OE is output after data is shifted, so need to set OE to fractional brightness
+        if(color_depth_idx && color_depth_idx <= lsbMsbTransitionBit) {
+          // divide brightness in half for each bit below lsbMsbTransitionBit
+          int lsbBrightness = brightness >> (lsbMsbTransitionBit - color_depth_idx + 1);
+          if((x_coord) >= lsbBrightness) v|=BIT_OE; // For Brightness
+        }
+        
         /* When using the drawPixel, we are obviously only changing the value of one x,y position, 
          * however, the HUB75 is wired up such that it is always painting TWO lines at the same time
          * and this reflects the parallel in-DMA-memory data structure of uint16_t's that are getting
@@ -140,10 +193,14 @@ void RGB64x32MatrixPanel_I2S_DMA::updateMatrixDMABuffer(int16_t x_coord, int16_t
          * so we have to check for this and check the correct position of the MATRIX_DATA_STORAGE_TYPE
          * data.
          */
-
-        
         int tmp_x_coord = ESP32_TX_FIFO_POSITION_ADJUST(x_coord);
-                 
+
+       if (debug)
+        {
+          Serial.print("dma x pos: "); Serial.println(tmp_x_coord, DEC);
+
+        }
+
         if (paint_top_half)
         { // Need to copy what the RGB status is for the bottom pixels
 
@@ -153,7 +210,14 @@ void RGB64x32MatrixPanel_I2S_DMA::updateMatrixDMABuffer(int16_t x_coord, int16_t
            if (red & mask)   {  v|=BIT_R1; }
 
            // Persist what was painted to the other half of the frame equiv. pixel
-           v|=  p->data[tmp_x_coord] & BITMASK_RGB2_EXTCT;
+           if (p->data[tmp_x_coord] & BIT_R2)
+                v|=BIT_R2;
+                
+           if (p->data[tmp_x_coord] & BIT_G2)
+                v|=BIT_G2;
+
+           if (p->data[tmp_x_coord] & BIT_B2)
+                v|=BIT_B2;
         }
         else
         { // Do it the other way around 
@@ -163,21 +227,29 @@ void RGB64x32MatrixPanel_I2S_DMA::updateMatrixDMABuffer(int16_t x_coord, int16_t
           if (green & mask) { v|=BIT_G2; }
           if (blue & mask)  { v|=BIT_B2; }
           
-          // Persist what was painted to the other half of the frame equiv. pixel
-           v|=  p->data[tmp_x_coord] & BITMASK_RGB1_EXTCT;     
+          // Copy
+          if (p->data[tmp_x_coord] & BIT_R1)
+              v|=BIT_R1;
+              
+          if (p->data[tmp_x_coord] & BIT_G1)
+              v|=BIT_G1;
+          
+          if (p->data[tmp_x_coord] & BIT_B1)
+              v|=BIT_B1; 
+               
         } // paint
 		
         // 16 bit parallel mode
         //Save the calculated value to the bitplane memory in reverse order to account for I2S Tx FIFO mode1 ordering
-        p->data[tmp_x_coord] = v;
+          p->data[tmp_x_coord] = v;
           
     } // color depth loop (8)
 
-
 } // updateMatrixDMABuffer (specific co-ords change)
 
+/*
 
-/* Update the entire buffer with a single specific colour - quicker */
+/* Update the entire buffer with a single specific colour - quicker 
 void RGB64x32MatrixPanel_I2S_DMA::clearMatrixDMABufferRGB()
 {
   if ( !everything_OK ) return;
@@ -238,3 +310,4 @@ void RGB64x32MatrixPanel_I2S_DMA::clearMatrixDMABufferRGB()
     } // colour depth loop (8)
   } // end row iteration
 } // updateMatrixDMABuffer (full frame paint)
+*/

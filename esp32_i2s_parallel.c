@@ -116,6 +116,8 @@ void i2s_parallel_setup_without_malloc(i2s_dev_t *dev, const i2s_parallel_config
 
 
     // Route clock signal to clock pin
+
+    // Need clock inversion? Do it here manually.
     gpio_matrix_out(cfg->gpio_clk, sig_clk, 0, 0);
   
     // route otehr signals

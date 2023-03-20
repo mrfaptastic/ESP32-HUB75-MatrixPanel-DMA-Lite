@@ -11,7 +11,7 @@ extern "C" {
 #include "rom/lldesc.h"
 
 
-#define DMA_MAX (4096-4)
+#define DMA_MAX (4096-12)
 //#define DMA_MAX (512)
 
 typedef enum {

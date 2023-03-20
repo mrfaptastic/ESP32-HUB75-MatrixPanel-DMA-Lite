@@ -83,25 +83,14 @@
 #define BIT_B2  (1<<5)   
 
 // Panel GPIO Pin Addresses (A, B, C, D etc..)
-#define BIT_A (1<<8)    
-#define BIT_B (1<<9)    
-#define BIT_C (1<<10)   
-#define BIT_D (1<<11)   
-#define BIT_E (1<<12)  
+#define BIT_A (1<<9)    
+#define BIT_B (1<<10)    
+#define BIT_C (1<<11)   
+#define BIT_D (1<<12)   
+#define BIT_E (1<<13)  
  // Panel Control Signals
-#define BIT_LAT (1<<13) 
-#define BIT_OE  (1<<14) 
-
-// BitMasks are pre-computed based on the above #define's for performance.
-// Borroed from the new library
-#define BITMASK_RGB1_CLEAR (0b1111111111111000)  // inverted bitmask for R1G1B1 bit in pixel vector
-#define BITMASK_RGB1_EXTCT (0b0000000000000111)  // inverted bitmask for R1G1B1 bit in pixel vector
-#define BITMASK_RGB2_CLEAR (0b1111111111000111)  // inverted bitmask for R2G2B2 bit in pixel vector
-#define BITMASK_RGB2_EXTCT (0b0000000000000111)  // inverted bitmask for R1G1B1 bit in pixel vector
-
-#define BITMASK_RGB12_CLEAR (0b1111111111000000) // inverted bitmask for R1G1B1R2G2B2 bit in pixel vector
-
-#define BITMASK_RGB12_OE_CLEAR (0b1011111111000000) // inverted bitmask for R1G1B1R2G2B2 bit in pixel vector
+#define BIT_LAT (1<<14) 
+#define BIT_OE  (1<<15) 
 
 // RGB Panel Constants / Calculated Values
 #define COLOR_CHANNELS_PER_PIXEL 3 
@@ -189,7 +178,7 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
     // Draw pixels
     virtual void drawPixel(int16_t x, int16_t y, uint16_t color);   // overwrite adafruit implementation
     //virtual void fillScreen(uint16_t color);                        // overwrite adafruit implementation
-    void clearScreen() { clearMatrixDMABufferRGB(); } 
+    void clearScreen() { fillScreen(0); } 
 
     void drawPixel(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b);
    
@@ -221,6 +210,11 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
       // Change to set the brightness of the display, range of 1 to matrixWidth (i.e. 1 - 64)
         brightness = b;
     }
+
+    inline void set_debug(bool state)
+    {
+      debug = state;
+    }
     
 
     i2s_parallel_buffer_desc_t *fb_desc;   // for dma descriptors
@@ -235,7 +229,9 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
     int  brightness           = 48;             // If you get ghosting... reduce brightness level. 60 seems to be the limit before ghosting on a 64 pixel wide physical panel for some panels.
     int  min_refresh_rate     = 60;            // Probably best to leave as is unless you want to experiment. Framerate has an impact on brightness and also power draw - voltage ripple.
     int  lsbMsbTransitionBit  = 0;     // For possible color depth calculations
-    
+    bool debug = false;
+
+
     /* Calculate the memory available for DMA use, do some other stuff, and allocate accordingly */
     bool allocateDMAmemory(int r1_pin, int  g1_pin, int  b1_pin, int  r2_pin, int  g2_pin, int  b2_pin, int  a_pin, int   b_pin, int  c_pin, int  d_pin, int  e_pin, int  lat_pin, int   oe_pin, int clk_pin);
 
@@ -243,7 +239,7 @@ class RGB64x32MatrixPanel_I2S_DMA : public Adafruit_GFX {
     void updateMatrixDMABuffer(int16_t x, int16_t y, uint8_t red, uint8_t green, uint8_t blue);
 
 	// Clear everything
-	void clearMatrixDMABufferRGB();
+	//void clearMatrixDMABufferRGB();
 	
 
 }; // end Class header
