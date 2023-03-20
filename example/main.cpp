@@ -37,20 +37,14 @@ void setup() {
   // fill the screen with 'black'
   dma_display.fillScreen(dma_display.color444(0, 0, 0));
 
-
-////dma_display.flipDMABuffer();
-//dma_display.flipDMABuffer();
-  // whew!
 }
 
 int column = 0;
 void loop() {
   // do nothing
 
-  //  dma_display.flipDMABuffer();
     dma_display.clearScreen();
     dma_display.drawLine(column, 0, column, dma_display.height()-1, dma_display.color444(15, 15, 15));
-    //Serial.println(column, DEC);
     dma_display.flipDMABuffer();
     column++;
 
