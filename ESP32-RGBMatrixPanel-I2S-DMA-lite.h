@@ -95,7 +95,10 @@
 // BitMasks are pre-computed based on the above #define's for performance.
 // Borroed from the new library
 #define BITMASK_RGB1_CLEAR (0b1111111111111000)  // inverted bitmask for R1G1B1 bit in pixel vector
+#define BITMASK_RGB1_EXTCT (0b0000000000000111)  // inverted bitmask for R1G1B1 bit in pixel vector
 #define BITMASK_RGB2_CLEAR (0b1111111111000111)  // inverted bitmask for R2G2B2 bit in pixel vector
+#define BITMASK_RGB2_EXTCT (0b0000000000000111)  // inverted bitmask for R1G1B1 bit in pixel vector
+
 #define BITMASK_RGB12_CLEAR (0b1111111111000000) // inverted bitmask for R1G1B1R2G2B2 bit in pixel vector
 
 #define BITMASK_RGB12_OE_CLEAR (0b1011111111000000) // inverted bitmask for R1G1B1R2G2B2 bit in pixel vector
